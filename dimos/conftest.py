@@ -75,6 +75,10 @@ def event_loop():
 def _autoconf(request):
     """Run autoconf() before all tests with capture suspended so people see `sudo` commands."""
 
+    # Skip autoconf if DIMOS_SKIP_AUTOCONF is set
+    if os.getenv("DIMOS_SKIP_AUTOCONF"):
+        return
+
     capman = request.config.pluginmanager.getplugin("capturemanager")
     capman.suspend_global_capture(in_=True)
     try:
