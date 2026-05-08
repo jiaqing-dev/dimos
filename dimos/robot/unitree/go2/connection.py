@@ -17,7 +17,7 @@ from threading import Thread
 import time
 from typing import TYPE_CHECKING, Any, Protocol
 
-from reactivex.disposable import Disposable
+from reactivex.disposable import CompositeDisposable, Disposable
 from reactivex.observable import Observable
 import rerun.blueprint as rrb
 
@@ -43,6 +43,7 @@ from dimos.msgs.sensor_msgs import CameraInfo, Image, PointCloud2
 from dimos.msgs.sensor_msgs.Image import ImageFormat
 from dimos.robot.unitree.connection import UnitreeWebRTCConnection
 from dimos.utils.data import get_data
+from dimos.utils.dataset_manifest import write_go2_manifest
 from dimos.utils.decorators.decorators import simple_mcache
 from dimos.utils.testing.replay import TimedSensorReplay, TimedSensorStorage
 
@@ -183,6 +184,8 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
     _global_config: GlobalConfig
     _camera_info_thread: Thread | None = None
     _latest_video_frame: Image | None = None
+    _recording_disposables: CompositeDisposable | None = None
+    _active_recording_name: str | None = None
 
     @classmethod
     def rerun_views(cls):  # type: ignore[no-untyped-def]
@@ -212,15 +215,50 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
         Module.__init__(self, *args, **kwargs)
 
     @rpc
-    def record(self, recording_name: str) -> None:
+    def start_recording(self, recording_name: str) -> str:
+        """Begin saving lidar, odom, and video streams under ``data/<recording_name>/``.
+
+        Call :meth:`stop_recording` to flush subscriptions and write ``dataset_manifest.json``.
+        """
+        if self._recording_disposables is not None:
+            return "Recording already running; call stop_recording first."
+
         lidar_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/lidar")  # type: ignore[type-arg]
-        lidar_store.consume_stream(self.connection.lidar_stream())
-
         odom_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/odom")  # type: ignore[type-arg]
-        odom_store.consume_stream(self.connection.odom_stream())
-
         video_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/video")  # type: ignore[type-arg]
-        video_store.consume_stream(self.connection.video_stream())
+
+        d_lidar = lidar_store.consume_stream(self.connection.lidar_stream())
+        d_odom = odom_store.consume_stream(self.connection.odom_stream())
+        d_video = video_store.consume_stream(self.connection.video_stream())
+
+        self._recording_disposables = CompositeDisposable(d_lidar, d_odom, d_video)
+        self._active_recording_name = recording_name
+        return f"Recording started to data/{recording_name}/ (lidar, odom, video)."
+
+    @rpc
+    def stop_recording(self) -> str:
+        """Stop an active recording and write manifest metadata next to the pickle streams."""
+        if self._recording_disposables is None:
+            return "No active recording."
+
+        name = self._active_recording_name
+        self._recording_disposables.dispose()
+        self._recording_disposables = None
+        self._active_recording_name = None
+
+        if name:
+            manifest_path = write_go2_manifest(name)
+            return f"Recording stopped; manifest written to {manifest_path}"
+        return "Recording stopped."
+
+    @rpc
+    def record(self, recording_name: str) -> None:
+        """Deprecated: use ``start_recording`` / ``stop_recording`` for manifest and clean teardown.
+
+        Starts background recording without returning disposables; prefer the explicit pair.
+        """
+        msg = self.start_recording(recording_name)
+        logger.warning("GO2Connection.record() is deprecated: %s", msg)
 
     @rpc
     def start(self) -> None:
@@ -252,6 +290,9 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
 
     @rpc
     def stop(self) -> None:
+        if self._recording_disposables is not None:
+            self.stop_recording()
+
         self.liedown()
 
         if self.connection:

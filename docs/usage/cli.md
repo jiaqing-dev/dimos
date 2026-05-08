@@ -180,6 +180,17 @@ List all available blueprints.
 dimos list
 ```
 
+### `dimos dataset`
+
+Inspect pickle recordings under `data/<name>/` (Go2-style `lidar`, `odom`, and `video` subfolders). Writes or refreshes `dataset_manifest.json` with per-stream frame counts and time span.
+
+```bash
+dimos dataset info my_capture
+dimos dataset info my_capture --refresh
+```
+
+Use `--refresh` to rescan `*.pickle` files after copying or editing a dataset. Go2 hardware capture uses RPC `start_recording` / `stop_recording` on `GO2Connection`, which finalizes the manifest on stop.
+
 ### `dimos show-config`
 
 Print resolved GlobalConfig values and their sources.
