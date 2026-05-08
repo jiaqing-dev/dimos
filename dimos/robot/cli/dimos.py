@@ -523,6 +523,41 @@ def top(ctx: typer.Context) -> None:
     dtop_main()
 
 
+dataset_app = typer.Typer(help="Inspect pickle recordings under data/ (e.g. Go2 streams)")
+main.add_typer(dataset_app, name="dataset")
+
+
+@dataset_app.command("info")
+def dataset_info_cmd(
+    name: str = typer.Argument(..., help="Dataset folder name under data/ (e.g. my_capture)"),
+    refresh: bool = typer.Option(
+        False,
+        "--refresh",
+        "-r",
+        help="Rescan pickle files and rewrite dataset_manifest.json",
+    ),
+) -> None:
+    """Show frame counts and time span for lidar/odom/video streams."""
+    from dimos.utils.data import get_data_dir
+    from dimos.utils.dataset_manifest import (
+        MANIFEST_FILENAME,
+        format_manifest_summary,
+        read_manifest,
+        write_go2_manifest,
+    )
+
+    root = get_data_dir(name)
+    manifest_path = root / MANIFEST_FILENAME
+    if refresh or not manifest_path.is_file():
+        write_go2_manifest(name)
+    try:
+        data = read_manifest(manifest_path)
+    except FileNotFoundError:
+        typer.echo(f"No dataset at {root} (manifest missing and nothing to scan)", err=True)
+        raise typer.Exit(1)
+    typer.echo(format_manifest_summary(data))
+
+
 topic_app = typer.Typer(help="Topic commands for pub/sub")
 main.add_typer(topic_app, name="topic")
 
