@@ -16,11 +16,14 @@ from threading import RLock
 
 
 class SequentialIds:
+    """Thread-safe sequential ID generator starting from 0."""
+
     def __init__(self) -> None:
         self._value = 0
         self._lock: RLock = RLock()
 
     def next(self) -> int:
+        """Return the next sequential ID in a thread-safe manner."""
         with self._lock:
             v = self._value
             self._value += 1

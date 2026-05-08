@@ -12,32 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""ANSI color formatting utilities for terminal output."""
+
 
 def green(text: str) -> str:
-    """Return the given text in green color."""
+    """Wrap text in ANSI green color codes for terminal display."""
     return f"\033[92m{text}\033[0m"
 
 
 def blue(text: str) -> str:
-    """Return the given text in blue color."""
+    """Wrap text in ANSI blue color codes for terminal display."""
     return f"\033[94m{text}\033[0m"
 
 
 def red(text: str) -> str:
-    """Return the given text in red color."""
+    """Wrap text in ANSI red color codes for terminal display."""
     return f"\033[91m{text}\033[0m"
 
 
 def yellow(text: str) -> str:
-    """Return the given text in yellow color."""
+    """Wrap text in ANSI yellow color codes for terminal display."""
     return f"\033[93m{text}\033[0m"
 
 
 def cyan(text: str) -> str:
-    """Return the given text in cyan color."""
+    """Wrap text in ANSI cyan color codes for terminal display."""
     return f"\033[96m{text}\033[0m"
 
 
 def orange(text: str) -> str:
-    """Return the given text in orange color."""
+    """Wrap text in ANSI orange color codes for terminal display."""
     return f"\033[38;5;208m{text}\033[0m"
