@@ -383,3 +383,56 @@ CI asserts the file is current — if it's stale, CI fails.
 - CLI / dimos run: `docs/development/dimos_run.md`
 - LFS data: `docs/development/large_file_management.md`
 - Agent system: `docs/agents/`
+
+---
+
+## Cursor Cloud specific instructions
+
+### Environment prerequisites
+
+The update script handles system deps (`libturbojpeg`, `portaudio19-dev`, `libegl1`, `iproute2`), LCM UDP buffer tuning (`sysctl`), multicast routing, `uv`, and `uv sync --all-extras --no-extra dds`. No manual setup needed after the update script runs.
+
+### LCM multicast networking
+
+DimOS's default LCM transport requires multicast on the loopback interface. If the autoconf prompt appears during startup or tests, answer **N** — the update script already configures the route. If it's missing (e.g. container restart), run:
+
+```bash
+sudo ip link set lo multicast on
+sudo ip route add 224.0.0.0/4 dev lo 2>/dev/null || true
+```
+
+### Running the application (headless)
+
+No display or GPU is available. Always pass `--viewer none` to suppress the Rerun viewer:
+
+```bash
+source .venv/bin/activate
+dimos --replay --viewer none run unitree-go2 --daemon
+dimos status   # verify it's up
+dimos log      # check logs
+dimos stop     # clean shutdown
+```
+
+Replay mode (`--replay`) uses LFS data. Pull the needed dataset first:
+
+```bash
+git lfs pull --include="data/.lfs/go2_sf_office*"
+```
+
+### Testing
+
+See `docs/development/testing.md` and the **Testing** section above. Key notes for Cloud:
+
+- `uv run pytest dimos/` runs fast tests only (default markers exclude `slow`, `tool`, `mujoco`).
+- The file `dimos/utils/test_dataset_s3_upload.py` has a pre-existing syntax error; pass `--ignore=dimos/utils/test_dataset_s3_upload.py` to avoid collection errors.
+- Some tests (e.g. `dimos/perception/detection/type/detection2d/test_bbox.py::test_detection2d`) may hang without a GPU; use `--timeout=60` to prevent indefinite blocks.
+- `uv run mypy dimos/` for type checking; pre-existing errors exist in `dimos/utils/dataset_manifest.py` and `dimos/utils/dataset_s3_upload.py`.
+- `uv run ruff check dimos/` for linting; pre-existing errors exist but are not from Cloud setup.
+
+### Agentic blueprints
+
+Agentic blueprints (e.g. `unitree-go2-agentic`) require `OPENAI_API_KEY`. The non-agentic `unitree-go2` blueprint works without any API keys and is best for basic dev verification.
+
+### Pre-commit hooks
+
+Pre-commit is installed but hooks are not configured by the update script. Before committing, activate the venv: `source .venv/bin/activate`.
