@@ -23,6 +23,26 @@ from dimos.utils import data
 from dimos.utils.data import LfsPath
 
 
+def test_get_data_dir_allows_nested_relative_paths() -> None:
+    nested = data.get_data_dir("dataset/frames")
+    assert nested == data.get_data_dir() / "dataset" / "frames"
+
+
+def test_get_data_dir_rejects_parent_traversal() -> None:
+    with pytest.raises(ValueError, match="unsafe path"):
+        data.get_data_dir("../outside")
+
+
+def test_get_data_dir_rejects_absolute_paths(tmp_path) -> None:
+    with pytest.raises(ValueError, match="unsafe path"):
+        data.get_data_dir(str(tmp_path / "outside"))
+
+
+def test_get_data_rejects_parent_traversal() -> None:
+    with pytest.raises(ValueError, match="unsafe path"):
+        data.get_data("../outside")
+
+
 @pytest.mark.slow
 def test_pull_file() -> None:
     repo_root = data._get_repo_root()

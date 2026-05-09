@@ -42,7 +42,7 @@ from dimos.msgs.geometry_msgs import (
 from dimos.msgs.sensor_msgs import CameraInfo, Image, PointCloud2
 from dimos.msgs.sensor_msgs.Image import ImageFormat
 from dimos.robot.unitree.connection import UnitreeWebRTCConnection
-from dimos.utils.data import get_data
+from dimos.utils.data import get_data, get_data_dir
 from dimos.utils.dataset_manifest import write_go2_manifest
 from dimos.utils.decorators.decorators import simple_mcache
 from dimos.utils.testing.replay import TimedSensorReplay, TimedSensorStorage
@@ -222,6 +222,11 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
         """
         if self._recording_disposables is not None:
             return "Recording already running; call stop_recording first."
+
+        try:
+            get_data_dir(recording_name)
+        except ValueError as e:
+            return f"Invalid recording name: {e}"
 
         lidar_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/lidar")  # type: ignore[type-arg]
         odom_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/odom")  # type: ignore[type-arg]
