@@ -106,9 +106,16 @@ def _get_repo_root() -> Path:
 
 @cache
 def get_data_dir(extra_path: str | None = None) -> Path:
-    if extra_path:
-        return _get_repo_root() / "data" / extra_path
-    return _get_repo_root() / "data"
+    data_dir = _get_repo_root() / "data"
+    if not extra_path:
+        return data_dir
+
+    relative_path = Path(extra_path)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise ValueError(
+            f"Data paths must stay under {data_dir}; got unsafe path: {extra_path!s}"
+        )
+    return data_dir / relative_path
 
 
 @cache
@@ -243,8 +250,7 @@ def get_data(name: str | Path) -> Path:
         # Nested path - downloads "dataset" archive, returns path to nested file
         frame = get_data("dataset/frames/001.png")
     """
-    data_dir = get_data_dir()
-    file_path = data_dir / name
+    file_path = get_data_dir(str(name))
 
     # already pulled and decompressed, return it directly
     if file_path.exists():
