@@ -248,6 +248,9 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
 
         if name:
             manifest_path = write_go2_manifest(name)
+            from dimos.utils.dataset_s3_upload import maybe_upload_dataset_after_recording
+
+            maybe_upload_dataset_after_recording(name)
             return f"Recording stopped; manifest written to {manifest_path}"
         return "Recording stopped."
 

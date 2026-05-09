@@ -558,6 +558,38 @@ def dataset_info_cmd(
     typer.echo(format_manifest_summary(data))
 
 
+@dataset_app.command("upload")
+def dataset_upload_cmd(
+    name: str = typer.Argument(..., help="Dataset folder name under data/"),
+    key_prefix: str | None = typer.Option(
+        None,
+        "--key-prefix",
+        "-p",
+        help="Object key prefix (overrides DIMOS_S3_KEY_PREFIX when set)",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Only pack to a temp file and print intended S3 keys; no upload",
+    ),
+) -> None:
+    """Pack ``data/<name>/`` as tar.gz and upload to S3-compatible storage (requires --extra s3)."""
+    from dimos.utils.dataset_s3_upload import run_dataset_pack_and_upload
+
+    try:
+        msg = run_dataset_pack_and_upload(name, key_prefix_cli=key_prefix, dry_run=dry_run)
+    except FileNotFoundError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    except ImportError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    typer.echo(msg)
+
+
 topic_app = typer.Typer(help="Topic commands for pub/sub")
 main.add_typer(topic_app, name="topic")
 
