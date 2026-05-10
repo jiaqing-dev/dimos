@@ -23,6 +23,14 @@ from dimos.utils import data
 from dimos.utils.data import LfsPath
 
 
+def test_get_data_dir_rejects_paths_outside_data_root() -> None:
+    with pytest.raises(ValueError, match="escapes data directory"):
+        data.get_data_dir("../outside")
+
+    with pytest.raises(ValueError, match="escapes data directory"):
+        data.get_data_dir("/tmp/outside")
+
+
 @pytest.mark.slow
 def test_pull_file() -> None:
     repo_root = data._get_repo_root()
