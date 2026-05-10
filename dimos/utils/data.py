@@ -106,9 +106,13 @@ def _get_repo_root() -> Path:
 
 @cache
 def get_data_dir(extra_path: str | None = None) -> Path:
+    data_root = (_get_repo_root() / "data").resolve()
     if extra_path:
-        return _get_repo_root() / "data" / extra_path
-    return _get_repo_root() / "data"
+        candidate = (data_root / extra_path).resolve()
+        if not candidate.is_relative_to(data_root):
+            raise ValueError(f"Data path escapes data directory: {extra_path}")
+        return candidate
+    return data_root
 
 
 @cache

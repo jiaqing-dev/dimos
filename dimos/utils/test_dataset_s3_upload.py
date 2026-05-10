@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 
+from dimos.utils import dataset_pack as dp
 from dimos.utils import dataset_manifest as dm
 from dimos.utils.dataset_pack import (
     build_object_key,
@@ -43,7 +44,8 @@ def test_build_object_key_prefix() -> None:
 
 
 def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dp, "get_data_dir", lambda name: tmp_path / name)
 
     root = tmp_path / "ds1"
     (root / "lidar").mkdir(parents=True)
@@ -65,10 +67,19 @@ def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
 
 def test_pack_dataset_empty_raises(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dp, "get_data_dir", lambda name: tmp_path / name)
     (tmp_path / "empty").mkdir()
     arc = tmp_path / "x.tar.gz"
     with pytest.raises(ValueError, match="No files"):
         pack_dataset_tar_gz("empty", arc)
+
+
+@pytest.mark.parametrize("dataset_name", ["", "../secret", "/tmp/secret", "nested/name"])
+def test_dataset_pack_rejects_unsafe_dataset_names(tmp_path, dataset_name) -> None:
+    arc = tmp_path / "out.tar.gz"
+    with pytest.raises(ValueError, match="Dataset name"):
+        pack_dataset_tar_gz(dataset_name, arc)
+    assert not arc.exists()
 
 
 def test_write_upload_sidecar_meta(tmp_path) -> None:
@@ -82,6 +93,7 @@ def test_write_upload_sidecar_meta(tmp_path) -> None:
 
 def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dp, "get_data_dir", lambda name: tmp_path / name)
     root = tmp_path / "dry_ds"
     (root / "video").mkdir(parents=True)
     (root / "video" / "000.pickle").write_bytes(b"v")
@@ -94,6 +106,7 @@ def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
 
 def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dp, "get_data_dir", lambda name: tmp_path / name)
     root = tmp_path / "up_ds"
     (root / "odom").mkdir(parents=True)
     (root / "odom" / "000.pickle").write_bytes(b"o")
@@ -105,7 +118,13 @@ def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
 
     uploads: list[tuple[Path, str]] = []
 
-    def fake_upload(local_path: Path, object_key: str, *, cfg: S3UploadConfig | None = None, **_: object) -> str:
+    def fake_upload(
+        local_path: Path,
+        object_key: str,
+        *,
+        cfg: S3UploadConfig | None = None,
+        **_: object,
+    ) -> str:
         uploads.append((local_path, object_key))
         return f"s3://{cfg.bucket}/{object_key}" if cfg else ""
 
@@ -129,15 +148,21 @@ def test_upload_file_to_s3_mock_client(monkeypatch, tmp_path) -> None:
     f = tmp_path / "blob.bin"
     f.write_bytes(b"data")
 
-    mock_client = object.__new__(object)
     called = {}
 
-    def upload_file(Filename: str, Bucket: str, Key: str, ExtraArgs: dict | None = None) -> None:
-        called["fn"] = Filename
-        called["bucket"] = Bucket
-        called["key"] = Key
+    class MockClient:
+        def upload_file(
+            self,
+            Filename: str,
+            Bucket: str,
+            Key: str,
+            ExtraArgs: dict | None = None,
+        ) -> None:
+            called["fn"] = Filename
+            called["bucket"] = Bucket
+            called["key"] = Key
 
-    mock_client.upload_file = upload_file
+    mock_client = MockClient()
 
     with patch("dimos.utils.dataset_s3_upload.s3_client_from_config", return_value=mock_client):
         uri = upload_file_to_s3(f, "prefix/k.tar.gz")
