@@ -227,9 +227,12 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
         odom_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/odom")  # type: ignore[type-arg]
         video_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/video")  # type: ignore[type-arg]
 
-        d_lidar = lidar_store.consume_stream(self.connection.lidar_stream())
-        d_odom = odom_store.consume_stream(self.connection.odom_stream())
-        d_video = video_store.consume_stream(self.connection.video_stream())
+        # Record from this module's already-published outputs instead of subscribing
+        # to the connection a second time. Replay and simulation streams are cold or
+        # stateful, so duplicate upstream subscriptions can corrupt the capture.
+        d_lidar = Disposable(self.lidar.subscribe(lidar_store.save))
+        d_odom = Disposable(self.odom.subscribe(odom_store.save))
+        d_video = Disposable(self.color_image.subscribe(video_store.save))
 
         self._recording_disposables = CompositeDisposable(d_lidar, d_odom, d_video)
         self._active_recording_name = recording_name
@@ -333,8 +336,7 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
     def _publish_tf(self, msg: PoseStamped) -> None:
         transforms = self._odom_to_tf(msg)
         self.tf.publish(*transforms)
-        if self.odom.transport:
-            self.odom.publish(msg)
+        self.odom.publish(msg)
 
     def publish_camera_info(self) -> None:
         while True:
