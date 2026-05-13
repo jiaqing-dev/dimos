@@ -543,9 +543,15 @@ def dataset_info_cmd(
         MANIFEST_FILENAME,
         format_manifest_summary,
         read_manifest,
+        validate_dataset_name,
         write_go2_manifest,
     )
 
+    try:
+        name = validate_dataset_name(name)
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
     root = get_data_dir(name)
     manifest_path = root / MANIFEST_FILENAME
     if refresh or not manifest_path.is_file():
