@@ -120,12 +120,14 @@ def run_dataset_pack_and_upload(
     """Pack ``data/<dataset_name>/`` and upload to S3 (or dry-run). Returns a status line."""
     import tempfile
 
+    from dimos.utils.dataset_manifest import validate_dataset_name
     from dimos.utils.dataset_pack import (
         build_object_key,
         pack_dataset_tar_gz,
         write_upload_sidecar_meta,
     )
 
+    dataset_name = validate_dataset_name(dataset_name)
     cfg = S3UploadConfig.from_env()
     eff_prefix = (
         key_prefix_cli.strip().strip("/")

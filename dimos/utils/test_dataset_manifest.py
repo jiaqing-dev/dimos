@@ -15,6 +15,7 @@
 import json
 
 import numpy as np
+import pytest
 
 from dimos.memory.timeseries.legacy import LegacyPickleStore
 from dimos.msgs.sensor_msgs.Image import Image, ImageFormat
@@ -61,3 +62,16 @@ def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
     assert data["streams"]["lidar"]["frames"] == 1
     summary = dm.format_manifest_summary(data)
     assert "lidar" in summary
+
+
+@pytest.mark.parametrize(
+    "dataset_name",
+    ["", "   ", "/tmp/capture", "../capture", "capture/../../etc", r"capture\..\etc"],
+)
+def test_validate_dataset_name_rejects_paths_outside_data(dataset_name: str) -> None:
+    with pytest.raises(ValueError):
+        dm.validate_dataset_name(dataset_name)
+
+
+def test_validate_dataset_name_normalizes_relative_path() -> None:
+    assert dm.validate_dataset_name(" captures/session1/ ") == "captures/session1"
