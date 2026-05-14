@@ -24,8 +24,11 @@ import tarfile
 from pathlib import Path
 from typing import Any
 
-from dimos.utils.data import get_data_dir
-from dimos.utils.dataset_manifest import MANIFEST_FILENAME
+from dimos.utils.dataset_manifest import (
+    MANIFEST_FILENAME,
+    dataset_root_path as _dataset_root_path,
+    validate_dataset_name,
+)
 
 _ARCHIVE_CHUNK = 1024 * 1024
 
@@ -39,7 +42,7 @@ def _dimos_version() -> str | None:
 
 def dataset_root_path(dataset_name: str) -> Path:
     """Resolved ``data/<dataset_name>/`` root."""
-    return get_data_dir(dataset_name)
+    return _dataset_root_path(dataset_name)
 
 
 def build_object_key(
@@ -47,11 +50,14 @@ def build_object_key(
     *,
     key_prefix: str = "",
     timestamp: datetime | None = None,
+    content_hash: str | None = None,
 ) -> str:
     """S3 object key: ``{prefix}{dataset}-{utc}.tar.gz``."""
+    dataset_name = validate_dataset_name(dataset_name)
     ts = timestamp or datetime.now(timezone.utc)
-    stamp = ts.strftime("%Y%m%dT%H%M%SZ")
-    base = f"{dataset_name}-{stamp}.tar.gz"
+    stamp = ts.strftime("%Y%m%dT%H%M%S.%fZ")
+    hash_suffix = f"-{content_hash[:12]}" if content_hash else ""
+    base = f"{dataset_name}-{stamp}{hash_suffix}.tar.gz"
     p = (key_prefix or "").strip().strip("/")
     return f"{p}/{base}" if p else base
 
@@ -75,7 +81,7 @@ def pack_dataset_tar_gz(
 
     with tarfile.open(dest_path, "w:gz", compresslevel=6) as tf:
         for path in sorted(root.rglob("*")):
-            if not path.is_file():
+            if path.is_symlink() or not path.is_file():
                 continue
             try:
                 rel = path.relative_to(root)

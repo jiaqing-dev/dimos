@@ -34,16 +34,38 @@ from dimos.utils.dataset_s3_upload import (
 )
 
 
+def _patch_data_dir(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        dm,
+        "get_data_dir",
+        lambda name=None: tmp_path if name is None else tmp_path / name,
+    )
+
+
 def test_build_object_key_prefix() -> None:
     from datetime import datetime, timezone
 
+    ts = datetime(2026, 5, 8, 12, 0, 0, 123456, tzinfo=timezone.utc)
+    k = build_object_key(
+        "cap",
+        key_prefix="pre",
+        timestamp=ts,
+        content_hash="abcdef1234567890",
+    )
+    assert k == "pre/cap-20260508T120000.123456Z-abcdef123456.tar.gz"
+
+
+def test_build_object_key_uses_hash_to_avoid_collisions() -> None:
+    from datetime import datetime, timezone
+
     ts = datetime(2026, 5, 8, 12, 0, 0, tzinfo=timezone.utc)
-    k = build_object_key("cap", key_prefix="pre", timestamp=ts)
-    assert k == "pre/cap-20260508T120000Z.tar.gz"
+    first = build_object_key("cap", timestamp=ts, content_hash="a" * 64)
+    second = build_object_key("cap", timestamp=ts, content_hash="b" * 64)
+    assert first != second
 
 
 def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
 
     root = tmp_path / "ds1"
     (root / "lidar").mkdir(parents=True)
@@ -64,11 +86,29 @@ def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
 
 
 def test_pack_dataset_empty_raises(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
     (tmp_path / "empty").mkdir()
     arc = tmp_path / "x.tar.gz"
     with pytest.raises(ValueError, match="No files"):
         pack_dataset_tar_gz("empty", arc)
+
+
+def test_pack_dataset_skips_symlinks(tmp_path, monkeypatch) -> None:
+    _patch_data_dir(monkeypatch, tmp_path)
+    root = tmp_path / "ds_symlink"
+    root.mkdir()
+    outside = tmp_path / "secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+    (root / "linked_secret.txt").symlink_to(outside)
+    (root / "frame.pickle").write_bytes(b"frame")
+
+    arc = tmp_path / "out.tar.gz"
+    meta = pack_dataset_tar_gz("ds_symlink", arc)
+
+    assert meta["files_packed"] == 1
+    with tarfile.open(arc, "r:gz") as tf:
+        names = tf.getnames()
+    assert names == ["ds_symlink/frame.pickle"]
 
 
 def test_write_upload_sidecar_meta(tmp_path) -> None:
@@ -81,7 +121,7 @@ def test_write_upload_sidecar_meta(tmp_path) -> None:
 
 
 def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
     root = tmp_path / "dry_ds"
     (root / "video").mkdir(parents=True)
     (root / "video" / "000.pickle").write_bytes(b"v")
@@ -93,7 +133,7 @@ def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
 
 
 def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
     root = tmp_path / "up_ds"
     (root / "odom").mkdir(parents=True)
     (root / "odom" / "000.pickle").write_bytes(b"o")
@@ -117,8 +157,9 @@ def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
     assert "Uploaded s3://testbucket/" in msg
     assert len(uploads) == 2
     assert uploads[0][0].suffixes[:2] == [".tar", ".gz"]
+    assert uploads[0][1].startswith("up_ds-")
     assert uploads[0][1].endswith(".tar.gz")
-    assert uploads[1][1].endswith(".tar.gz.meta.json")
+    assert uploads[1][1] == f"{uploads[0][1]}.meta.json"
 
 
 def test_upload_file_to_s3_mock_client(monkeypatch, tmp_path) -> None:
