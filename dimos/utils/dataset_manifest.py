@@ -36,6 +36,31 @@ def _dimos_version() -> str | None:
         return None
 
 
+def validate_dataset_name(dataset_name: str) -> str:
+    """Validate a dataset name that will be resolved below ``data/``."""
+    if not dataset_name:
+        raise ValueError("Dataset name must not be empty")
+    if "\x00" in dataset_name or "\\" in dataset_name:
+        raise ValueError(f"Invalid dataset name: {dataset_name!r}")
+
+    path = Path(dataset_name)
+    if path.is_absolute() or any(part in ("", ".", "..") for part in path.parts):
+        raise ValueError(f"Dataset name must stay under data/: {dataset_name!r}")
+    return dataset_name
+
+
+def dataset_root_path(dataset_name: str) -> Path:
+    """Return the resolved dataset root, refusing paths outside ``data/``."""
+    dataset_name = validate_dataset_name(dataset_name)
+    data_root = get_data_dir().resolve()
+    root = (data_root / dataset_name).resolve(strict=False)
+    try:
+        root.relative_to(data_root)
+    except ValueError as e:
+        raise ValueError(f"Dataset path escapes data/: {dataset_name!r}") from e
+    return root
+
+
 def stream_dir_stats(stream_path: Path) -> dict[str, Any]:
     """Summarize one stream directory without loading every frame."""
     if not stream_path.is_dir():
@@ -64,7 +89,7 @@ def build_go2_manifest_payload(
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build manifest dict for a dataset rooted at ``data/<dataset_name>/``."""
-    root = get_data_dir(dataset_name)
+    root = dataset_root_path(dataset_name)
     stream_entries: dict[str, Any] = {}
     for sub in streams:
         stream_entries[sub] = stream_dir_stats(root / sub)
@@ -89,7 +114,7 @@ def write_go2_manifest(
     extra: dict[str, Any] | None = None,
 ) -> Path:
     """Write ``dataset_manifest.json`` under the dataset root."""
-    root = get_data_dir(dataset_name)
+    root = dataset_root_path(dataset_name)
     root.mkdir(parents=True, exist_ok=True)
     payload = build_go2_manifest_payload(dataset_name, streams=streams, extra=extra)
     manifest_path = root / MANIFEST_FILENAME

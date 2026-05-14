@@ -15,10 +15,19 @@
 import json
 
 import numpy as np
+import pytest
 
 from dimos.memory.timeseries.legacy import LegacyPickleStore
 from dimos.msgs.sensor_msgs.Image import Image, ImageFormat
 from dimos.utils import dataset_manifest as dm
+
+
+def _patch_data_dir(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        dm,
+        "get_data_dir",
+        lambda name=None: tmp_path if name is None else tmp_path / name,
+    )
 
 
 def test_stream_dir_stats_empty_dir(tmp_path) -> None:
@@ -43,7 +52,7 @@ def test_stream_dir_stats_with_frames(tmp_path) -> None:
 
 
 def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
 
     (tmp_path / "capture" / "lidar").mkdir(parents=True)
     store = LegacyPickleStore(tmp_path / "capture" / "lidar")
@@ -61,3 +70,16 @@ def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
     assert data["streams"]["lidar"]["frames"] == 1
     summary = dm.format_manifest_summary(data)
     assert "lidar" in summary
+
+
+def test_dataset_root_path_rejects_escape(tmp_path, monkeypatch) -> None:
+    _patch_data_dir(monkeypatch, tmp_path)
+
+    with pytest.raises(ValueError, match="data"):
+        dm.dataset_root_path("../outside")
+
+    outside = tmp_path.parent / "outside"
+    outside.mkdir(exist_ok=True)
+    (tmp_path / "linked").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match="escapes"):
+        dm.dataset_root_path("linked")
