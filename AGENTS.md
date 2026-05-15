@@ -383,3 +383,45 @@ CI asserts the file is current — if it's stale, CI fails.
 - CLI / dimos run: `docs/development/dimos_run.md`
 - LFS data: `docs/development/large_file_management.md`
 - Agent system: `docs/agents/`
+
+---
+
+## Cursor Cloud specific instructions
+
+### System prerequisites (already installed in VM snapshot)
+
+LCM multicast networking must be configured before running tests or blueprints:
+
+```bash
+sudo ip link set lo multicast on
+sudo ip route add 224.0.0.0/4 dev lo 2>/dev/null || true
+sudo sysctl -w net.core.rmem_max=67108864
+sudo sysctl -w net.core.rmem_default=67108864
+```
+
+Also required: `iproute2` (for the `ip` command used by `autoconf()`).
+
+### Running tests
+
+- `uv run pytest` runs the fast test suite (~1131 tests, ~9 min). Excludes `slow`, `tool`, and `mujoco` markers.
+- You must `--ignore=dimos/utils/test_dataset_s3_upload.py` due to a pre-existing syntax error in that file that blocks test collection.
+- Tests invoke `autoconf()` on import, which requires LCM multicast networking (see above). Without it, tests prompt interactively and then abort.
+- Pre-commit hooks require `git config --unset-all core.hooksPath` if `core.hooksPath` is set (common in Cloud Agent VMs).
+
+### Running blueprints
+
+- Use `--replay` to run without robot hardware and `--viewer none` for headless (no GUI).
+- Example: `uv run dimos --replay --viewer none run unitree-go2 --daemon`
+- Check status: `uv run dimos status` / `uv run dimos log`
+- Stop: `uv run dimos stop`
+
+### Lint and type checking
+
+- `uv run ruff check dimos/` and `uv run ruff format --check dimos/` for linting.
+- `uv run mypy dimos/` for type checking (~671 files, takes ~60s).
+- Both have pre-existing minor issues in the repo.
+
+### Notes
+
+- The venv must be activated (`source .venv/bin/activate`) before `git commit` for pre-commit hooks to work.
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc. are optional — tests skip gracefully when missing.
