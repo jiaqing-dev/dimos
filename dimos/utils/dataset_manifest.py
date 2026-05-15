@@ -47,6 +47,8 @@ def validate_dataset_name(dataset_name: str) -> str:
     windows_path = PureWindowsPath(dataset_name)
     if posix_path.is_absolute() or windows_path.is_absolute() or windows_path.drive:
         raise ValueError("Dataset name must be relative to the DimOS data directory.")
+    if not posix_path.parts:
+        raise ValueError("Dataset name must include at least one path segment.")
     if any(part in ("", ".", "..") for part in posix_path.parts):
         raise ValueError("Dataset name cannot contain empty, '.', or '..' path segments.")
     return posix_path.as_posix()
