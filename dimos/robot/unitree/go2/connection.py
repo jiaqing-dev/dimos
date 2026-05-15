@@ -43,7 +43,11 @@ from dimos.msgs.sensor_msgs import CameraInfo, Image, PointCloud2
 from dimos.msgs.sensor_msgs.Image import ImageFormat
 from dimos.robot.unitree.connection import UnitreeWebRTCConnection
 from dimos.utils.data import get_data
-from dimos.utils.dataset_manifest import write_go2_manifest
+from dimos.utils.dataset_manifest import (
+    dataset_root_path,
+    validate_dataset_name,
+    write_go2_manifest,
+)
 from dimos.utils.decorators.decorators import simple_mcache
 from dimos.utils.testing.replay import TimedSensorReplay, TimedSensorStorage
 
@@ -223,9 +227,15 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
         if self._recording_disposables is not None:
             return "Recording already running; call stop_recording first."
 
-        lidar_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/lidar")  # type: ignore[type-arg]
-        odom_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/odom")  # type: ignore[type-arg]
-        video_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/video")  # type: ignore[type-arg]
+        try:
+            recording_name = validate_dataset_name(recording_name)
+            recording_root = dataset_root_path(recording_name)
+        except ValueError as exc:
+            return f"Invalid recording name: {exc}"
+
+        lidar_store: TimedSensorStorage = TimedSensorStorage(recording_root / "lidar")  # type: ignore[type-arg]
+        odom_store: TimedSensorStorage = TimedSensorStorage(recording_root / "odom")  # type: ignore[type-arg]
+        video_store: TimedSensorStorage = TimedSensorStorage(recording_root / "video")  # type: ignore[type-arg]
 
         d_lidar = lidar_store.consume_stream(self.connection.lidar_stream())
         d_odom = odom_store.consume_stream(self.connection.odom_stream())
@@ -233,7 +243,7 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
 
         self._recording_disposables = CompositeDisposable(d_lidar, d_odom, d_video)
         self._active_recording_name = recording_name
-        return f"Recording started to data/{recording_name}/ (lidar, odom, video)."
+        return f"Recording started to {recording_root}/ (lidar, odom, video)."
 
     @rpc
     def stop_recording(self) -> str:

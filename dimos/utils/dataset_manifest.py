@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import importlib.metadata
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from dimos.memory.timeseries.legacy import LegacyPickleStore
@@ -34,6 +34,36 @@ def _dimos_version() -> str | None:
         return importlib.metadata.version("dimos")
     except importlib.metadata.PackageNotFoundError:
         return None
+
+
+def validate_dataset_name(dataset_name: str) -> str:
+    """Return a normalized dataset name that is confined under the data directory."""
+    if dataset_name != dataset_name.strip() or not dataset_name.strip():
+        raise ValueError("Dataset name must be a non-empty relative path.")
+    if "\\" in dataset_name:
+        raise ValueError("Dataset name must use '/' path separators.")
+
+    posix_path = PurePosixPath(dataset_name)
+    windows_path = PureWindowsPath(dataset_name)
+    if posix_path.is_absolute() or windows_path.is_absolute() or windows_path.drive:
+        raise ValueError("Dataset name must be relative to the DimOS data directory.")
+    if not posix_path.parts:
+        raise ValueError("Dataset name must include at least one path segment.")
+    if any(part in ("", ".", "..") for part in posix_path.parts):
+        raise ValueError("Dataset name cannot contain empty, '.', or '..' path segments.")
+    return posix_path.as_posix()
+
+
+def dataset_root_path(dataset_name: str) -> Path:
+    """Resolved ``data/<dataset_name>/`` path, rejecting names that escape ``data/``."""
+    safe_name = validate_dataset_name(dataset_name)
+    data_root = get_data_dir().resolve(strict=False)
+    root = (data_root / safe_name).resolve(strict=False)
+    try:
+        root.relative_to(data_root)
+    except ValueError as exc:
+        raise ValueError("Dataset path must stay within the DimOS data directory.") from exc
+    return root
 
 
 def stream_dir_stats(stream_path: Path) -> dict[str, Any]:
@@ -64,7 +94,8 @@ def build_go2_manifest_payload(
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build manifest dict for a dataset rooted at ``data/<dataset_name>/``."""
-    root = get_data_dir(dataset_name)
+    dataset_name = validate_dataset_name(dataset_name)
+    root = dataset_root_path(dataset_name)
     stream_entries: dict[str, Any] = {}
     for sub in streams:
         stream_entries[sub] = stream_dir_stats(root / sub)
@@ -89,7 +120,8 @@ def write_go2_manifest(
     extra: dict[str, Any] | None = None,
 ) -> Path:
     """Write ``dataset_manifest.json`` under the dataset root."""
-    root = get_data_dir(dataset_name)
+    root = dataset_root_path(dataset_name)
+    dataset_name = validate_dataset_name(dataset_name)
     root.mkdir(parents=True, exist_ok=True)
     payload = build_go2_manifest_payload(dataset_name, streams=streams, extra=extra)
     manifest_path = root / MANIFEST_FILENAME
