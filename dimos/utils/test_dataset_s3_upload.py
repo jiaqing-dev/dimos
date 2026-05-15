@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import json
-import os
 from pathlib import Path
 import tarfile
 from unittest.mock import patch
@@ -34,6 +33,13 @@ from dimos.utils.dataset_s3_upload import (
 )
 
 
+def _tmp_data_dir(tmp_path):
+    def _get_data_dir(name: str | None = None):
+        return tmp_path / name if name else tmp_path
+
+    return _get_data_dir
+
+
 def test_build_object_key_prefix() -> None:
     from datetime import datetime, timezone
 
@@ -43,7 +49,7 @@ def test_build_object_key_prefix() -> None:
 
 
 def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dm, "get_data_dir", _tmp_data_dir(tmp_path))
 
     root = tmp_path / "ds1"
     (root / "lidar").mkdir(parents=True)
@@ -64,7 +70,7 @@ def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
 
 
 def test_pack_dataset_empty_raises(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dm, "get_data_dir", _tmp_data_dir(tmp_path))
     (tmp_path / "empty").mkdir()
     arc = tmp_path / "x.tar.gz"
     with pytest.raises(ValueError, match="No files"):
@@ -81,7 +87,7 @@ def test_write_upload_sidecar_meta(tmp_path) -> None:
 
 
 def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dm, "get_data_dir", _tmp_data_dir(tmp_path))
     root = tmp_path / "dry_ds"
     (root / "video").mkdir(parents=True)
     (root / "video" / "000.pickle").write_bytes(b"v")
@@ -93,7 +99,7 @@ def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
 
 
 def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dm, "get_data_dir", _tmp_data_dir(tmp_path))
     root = tmp_path / "up_ds"
     (root / "odom").mkdir(parents=True)
     (root / "odom" / "000.pickle").write_bytes(b"o")
@@ -105,7 +111,13 @@ def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
 
     uploads: list[tuple[Path, str]] = []
 
-    def fake_upload(local_path: Path, object_key: str, *, cfg: S3UploadConfig | None = None, **_: object) -> str:
+    def fake_upload(
+        local_path: Path,
+        object_key: str,
+        *,
+        cfg: S3UploadConfig | None = None,
+        **_: object,
+    ) -> str:
         uploads.append((local_path, object_key))
         return f"s3://{cfg.bucket}/{object_key}" if cfg else ""
 
@@ -129,10 +141,18 @@ def test_upload_file_to_s3_mock_client(monkeypatch, tmp_path) -> None:
     f = tmp_path / "blob.bin"
     f.write_bytes(b"data")
 
-    mock_client = object.__new__(object)
+    class MockClient:
+        pass
+
+    mock_client = MockClient()
     called = {}
 
-    def upload_file(Filename: str, Bucket: str, Key: str, ExtraArgs: dict | None = None) -> None:
+    def upload_file(
+        Filename: str,
+        Bucket: str,
+        Key: str,
+        ExtraArgs: dict | None = None,
+    ) -> None:
         called["fn"] = Filename
         called["bucket"] = Bucket
         called["key"] = Key
@@ -164,3 +184,15 @@ def test_maybe_upload_logs_when_incomplete(monkeypatch, caplog) -> None:
     with caplog.at_level(logging.WARNING):
         maybe_upload_dataset_after_recording("x")
     assert "missing" in caplog.text.lower() or "skip" in caplog.text.lower()
+
+
+@pytest.mark.parametrize("dataset_name", ["", "/etc", "../../tmp", "capture/../outside"])
+def test_pack_dataset_tar_gz_rejects_unsafe_dataset_names(tmp_path, dataset_name: str) -> None:
+    arc = tmp_path / "out.tar.gz"
+    with pytest.raises(ValueError):
+        pack_dataset_tar_gz(dataset_name, arc)
+
+
+def test_run_dataset_pack_and_upload_rejects_absolute_dataset_name() -> None:
+    with pytest.raises(ValueError):
+        run_dataset_pack_and_upload("/etc", dry_run=True)

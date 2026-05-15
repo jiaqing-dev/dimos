@@ -15,10 +15,18 @@
 import json
 
 import numpy as np
+import pytest
 
 from dimos.memory.timeseries.legacy import LegacyPickleStore
 from dimos.msgs.sensor_msgs.Image import Image, ImageFormat
 from dimos.utils import dataset_manifest as dm
+
+
+def _tmp_data_dir(tmp_path):
+    def _get_data_dir(name: str | None = None):
+        return tmp_path / name if name else tmp_path
+
+    return _get_data_dir
 
 
 def test_stream_dir_stats_empty_dir(tmp_path) -> None:
@@ -43,7 +51,7 @@ def test_stream_dir_stats_with_frames(tmp_path) -> None:
 
 
 def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dm, "get_data_dir", _tmp_data_dir(tmp_path))
 
     (tmp_path / "capture" / "lidar").mkdir(parents=True)
     store = LegacyPickleStore(tmp_path / "capture" / "lidar")
@@ -61,3 +69,18 @@ def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
     assert data["streams"]["lidar"]["frames"] == 1
     summary = dm.format_manifest_summary(data)
     assert "lidar" in summary
+
+
+def test_dataset_root_path_allows_nested_relative_names(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(dm, "get_data_dir", _tmp_data_dir(tmp_path))
+
+    assert dm.dataset_root_path("capture/session-1") == tmp_path / "capture" / "session-1"
+
+
+@pytest.mark.parametrize(
+    "dataset_name",
+    ["", " ", ".", "/etc", "../outside", "capture/../outside", "C:\\tmp\\capture"],
+)
+def test_dataset_root_path_rejects_unsafe_names(dataset_name: str) -> None:
+    with pytest.raises(ValueError):
+        dm.dataset_root_path(dataset_name)
