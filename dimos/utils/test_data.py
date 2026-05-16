@@ -23,6 +23,18 @@ from dimos.utils import data
 from dimos.utils.data import LfsPath
 
 
+def test_get_data_dir_allows_nested_relative_paths() -> None:
+    assert data.get_data_dir("captures/go2").relative_to(data.get_data_dir()) == Path(
+        "captures/go2"
+    )
+
+
+@pytest.mark.parametrize("bad_path", ["../outside", "captures/../../outside", "/tmp/outside"])
+def test_get_data_dir_rejects_paths_outside_data(bad_path: str) -> None:
+    with pytest.raises(ValueError, match="Data path must stay under"):
+        data.get_data_dir(bad_path)
+
+
 @pytest.mark.slow
 def test_pull_file() -> None:
     repo_root = data._get_repo_root()
