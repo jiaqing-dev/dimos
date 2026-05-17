@@ -23,6 +23,20 @@ from dimos.utils import data
 from dimos.utils.data import LfsPath
 
 
+def test_get_data_dir_rejects_paths_outside_data(tmp_path, monkeypatch) -> None:
+    data.get_data_dir.cache_clear()
+    monkeypatch.setattr(data, "_get_repo_root", lambda: tmp_path)
+
+    try:
+        assert data.get_data_dir("capture/lidar") == tmp_path / "data" / "capture" / "lidar"
+
+        for unsafe in ("../outside", "capture/../../outside", "/tmp/outside"):
+            with pytest.raises(ValueError, match="under the data directory"):
+                data.get_data_dir(unsafe)
+    finally:
+        data.get_data_dir.cache_clear()
+
+
 @pytest.mark.slow
 def test_pull_file() -> None:
     repo_root = data._get_repo_root()

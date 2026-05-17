@@ -105,9 +105,12 @@ def _get_repo_root() -> Path:
 
 
 @cache
-def get_data_dir(extra_path: str | None = None) -> Path:
+def get_data_dir(extra_path: str | Path | None = None) -> Path:
     if extra_path:
-        return _get_repo_root() / "data" / extra_path
+        path = Path(extra_path)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"Data path must stay under the data directory: {extra_path}")
+        return _get_repo_root() / "data" / path
     return _get_repo_root() / "data"
 
 
