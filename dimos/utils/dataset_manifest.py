@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from dimos.memory.timeseries.legacy import LegacyPickleStore
-from dimos.utils.data import get_data_dir
+from dimos.utils.dataset_paths import safe_dataset_root, validate_dataset_name
 
 MANIFEST_FILENAME = "dataset_manifest.json"
 DEFAULT_GO2_STREAMS = ("lidar", "odom", "video")
@@ -64,7 +64,8 @@ def build_go2_manifest_payload(
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build manifest dict for a dataset rooted at ``data/<dataset_name>/``."""
-    root = get_data_dir(dataset_name)
+    dataset_name = validate_dataset_name(dataset_name)
+    root = safe_dataset_root(dataset_name)
     stream_entries: dict[str, Any] = {}
     for sub in streams:
         stream_entries[sub] = stream_dir_stats(root / sub)
@@ -89,7 +90,8 @@ def write_go2_manifest(
     extra: dict[str, Any] | None = None,
 ) -> Path:
     """Write ``dataset_manifest.json`` under the dataset root."""
-    root = get_data_dir(dataset_name)
+    dataset_name = validate_dataset_name(dataset_name)
+    root = safe_dataset_root(dataset_name)
     root.mkdir(parents=True, exist_ok=True)
     payload = build_go2_manifest_payload(dataset_name, streams=streams, extra=extra)
     manifest_path = root / MANIFEST_FILENAME

@@ -21,6 +21,7 @@ from unittest.mock import patch
 import pytest
 
 from dimos.utils import dataset_manifest as dm
+from dimos.utils import dataset_paths as dpaths
 from dimos.utils.dataset_pack import (
     build_object_key,
     pack_dataset_tar_gz,
@@ -34,6 +35,14 @@ from dimos.utils.dataset_s3_upload import (
 )
 
 
+def _patch_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        dpaths,
+        "get_data_dir",
+        lambda name=None: tmp_path / name if name else tmp_path,
+    )
+
+
 def test_build_object_key_prefix() -> None:
     from datetime import datetime, timezone
 
@@ -42,8 +51,13 @@ def test_build_object_key_prefix() -> None:
     assert k == "pre/cap-20260508T120000Z.tar.gz"
 
 
+def test_build_object_key_rejects_path_traversal() -> None:
+    with pytest.raises(ValueError, match="single directory name"):
+        build_object_key("../cap")
+
+
 def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
 
     root = tmp_path / "ds1"
     (root / "lidar").mkdir(parents=True)
@@ -64,11 +78,49 @@ def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
 
 
 def test_pack_dataset_empty_raises(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
     (tmp_path / "empty").mkdir()
     arc = tmp_path / "x.tar.gz"
     with pytest.raises(ValueError, match="No files"):
         pack_dataset_tar_gz("empty", arc)
+
+
+def test_pack_dataset_rejects_symlink_root_escape(tmp_path, monkeypatch) -> None:
+    _patch_data_dir(monkeypatch, tmp_path)
+    outside = tmp_path.parent / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("secret", encoding="utf-8")
+
+    link = tmp_path / "linked_ds"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are not supported on this filesystem")
+
+    with pytest.raises(ValueError, match="must stay under"):
+        pack_dataset_tar_gz("linked_ds", tmp_path / "out.tar.gz")
+
+
+def test_pack_dataset_skips_symlink_members(tmp_path, monkeypatch) -> None:
+    _patch_data_dir(monkeypatch, tmp_path)
+    root = tmp_path / "safe_ds"
+    (root / "video").mkdir(parents=True)
+    (root / "video" / "000.pickle").write_bytes(b"frame")
+    outside = tmp_path.parent / "secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+    try:
+        (root / "video" / "secret_link").symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks are not supported on this filesystem")
+
+    arc = tmp_path / "safe.tar.gz"
+    meta = pack_dataset_tar_gz("safe_ds", arc)
+
+    assert meta["files_packed"] == 1
+    with tarfile.open(arc, "r:gz") as tf:
+        names = tf.getnames()
+    assert "safe_ds/video/000.pickle" in names
+    assert all("secret_link" not in name for name in names)
 
 
 def test_write_upload_sidecar_meta(tmp_path) -> None:
@@ -81,7 +133,7 @@ def test_write_upload_sidecar_meta(tmp_path) -> None:
 
 
 def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
     root = tmp_path / "dry_ds"
     (root / "video").mkdir(parents=True)
     (root / "video" / "000.pickle").write_bytes(b"v")
@@ -93,7 +145,7 @@ def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
 
 
 def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
     root = tmp_path / "up_ds"
     (root / "odom").mkdir(parents=True)
     (root / "odom" / "000.pickle").write_bytes(b"o")
@@ -105,7 +157,13 @@ def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
 
     uploads: list[tuple[Path, str]] = []
 
-    def fake_upload(local_path: Path, object_key: str, *, cfg: S3UploadConfig | None = None, **_: object) -> str:
+    def fake_upload(
+        local_path: Path,
+        object_key: str,
+        *,
+        cfg: S3UploadConfig | None = None,
+        **_: object,
+    ) -> str:
         uploads.append((local_path, object_key))
         return f"s3://{cfg.bucket}/{object_key}" if cfg else ""
 
@@ -129,10 +187,18 @@ def test_upload_file_to_s3_mock_client(monkeypatch, tmp_path) -> None:
     f = tmp_path / "blob.bin"
     f.write_bytes(b"data")
 
-    mock_client = object.__new__(object)
+    class MockClient:
+        pass
+
+    mock_client = MockClient()
     called = {}
 
-    def upload_file(Filename: str, Bucket: str, Key: str, ExtraArgs: dict | None = None) -> None:
+    def upload_file(
+        Filename: str,
+        Bucket: str,
+        Key: str,
+        ExtraArgs: dict | None = None,
+    ) -> None:
         called["fn"] = Filename
         called["bucket"] = Bucket
         called["key"] = Key
