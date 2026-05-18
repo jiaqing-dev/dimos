@@ -24,8 +24,8 @@ import tarfile
 from pathlib import Path
 from typing import Any
 
-from dimos.utils.data import get_data_dir
 from dimos.utils.dataset_manifest import MANIFEST_FILENAME
+from dimos.utils.dataset_paths import safe_dataset_root, validate_dataset_name
 
 _ARCHIVE_CHUNK = 1024 * 1024
 
@@ -39,7 +39,7 @@ def _dimos_version() -> str | None:
 
 def dataset_root_path(dataset_name: str) -> Path:
     """Resolved ``data/<dataset_name>/`` root."""
-    return get_data_dir(dataset_name)
+    return safe_dataset_root(dataset_name)
 
 
 def build_object_key(
@@ -49,6 +49,7 @@ def build_object_key(
     timestamp: datetime | None = None,
 ) -> str:
     """S3 object key: ``{prefix}{dataset}-{utc}.tar.gz``."""
+    dataset_name = validate_dataset_name(dataset_name)
     ts = timestamp or datetime.now(timezone.utc)
     stamp = ts.strftime("%Y%m%dT%H%M%SZ")
     base = f"{dataset_name}-{stamp}.tar.gz"
@@ -66,16 +67,22 @@ def pack_dataset_tar_gz(
 
     Returns upload metadata (including ``archive_sha256`` of the written file).
     """
+    dataset_name = validate_dataset_name(dataset_name)
     root = dataset_root_path(dataset_name)
     if not root.is_dir():
         raise FileNotFoundError(f"Dataset directory does not exist: {root}")
+    root_resolved = root.resolve()
 
     files_added = 0
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with tarfile.open(dest_path, "w:gz", compresslevel=6) as tf:
+    with tarfile.open(dest_path, "w:gz", compresslevel=6, dereference=False) as tf:
         for path in sorted(root.rglob("*")):
-            if not path.is_file():
+            if path.is_symlink() or not path.is_file():
+                continue
+            try:
+                path.resolve(strict=True).relative_to(root_resolved)
+            except (FileNotFoundError, ValueError):
                 continue
             try:
                 rel = path.relative_to(root)

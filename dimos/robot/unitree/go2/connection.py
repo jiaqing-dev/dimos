@@ -44,6 +44,7 @@ from dimos.msgs.sensor_msgs.Image import ImageFormat
 from dimos.robot.unitree.connection import UnitreeWebRTCConnection
 from dimos.utils.data import get_data
 from dimos.utils.dataset_manifest import write_go2_manifest
+from dimos.utils.dataset_paths import validate_dataset_name
 from dimos.utils.decorators.decorators import simple_mcache
 from dimos.utils.testing.replay import TimedSensorReplay, TimedSensorStorage
 
@@ -220,6 +221,11 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
 
         Call :meth:`stop_recording` to flush subscriptions and write ``dataset_manifest.json``.
         """
+        try:
+            validate_dataset_name(recording_name)
+        except ValueError as e:
+            return str(e)
+
         if self._recording_disposables is not None:
             return "Recording already running; call stop_recording first."
 
