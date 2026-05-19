@@ -43,7 +43,8 @@ from dimos.msgs.sensor_msgs import CameraInfo, Image, PointCloud2
 from dimos.msgs.sensor_msgs.Image import ImageFormat
 from dimos.robot.unitree.connection import UnitreeWebRTCConnection
 from dimos.utils.data import get_data
-from dimos.utils.dataset_manifest import write_go2_manifest
+from dimos.utils.dataset_manifest import DEFAULT_GO2_STREAMS, write_go2_manifest
+from dimos.utils.dataset_paths import dataset_has_pickles, safe_dataset_dir, validate_dataset_name
 from dimos.utils.decorators.decorators import simple_mcache
 from dimos.utils.testing.replay import TimedSensorReplay, TimedSensorStorage
 
@@ -223,17 +224,29 @@ class GO2Connection(Module, spec.Camera, spec.Pointcloud):
         if self._recording_disposables is not None:
             return "Recording already running; call stop_recording first."
 
-        lidar_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/lidar")  # type: ignore[type-arg]
-        odom_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/odom")  # type: ignore[type-arg]
-        video_store: TimedSensorStorage = TimedSensorStorage(f"{recording_name}/video")  # type: ignore[type-arg]
+        try:
+            safe_name = validate_dataset_name(recording_name)
+            root = safe_dataset_dir(safe_name)
+        except ValueError as exc:
+            return f"Recording not started: {exc}"
+
+        if dataset_has_pickles(root, DEFAULT_GO2_STREAMS):
+            return (
+                f"Recording not started: data/{safe_name}/ already contains pickle frames. "
+                "Use a new recording name to avoid mixing captures."
+            )
+
+        lidar_store: TimedSensorStorage = TimedSensorStorage(root / "lidar")  # type: ignore[type-arg]
+        odom_store: TimedSensorStorage = TimedSensorStorage(root / "odom")  # type: ignore[type-arg]
+        video_store: TimedSensorStorage = TimedSensorStorage(root / "video")  # type: ignore[type-arg]
 
         d_lidar = lidar_store.consume_stream(self.connection.lidar_stream())
         d_odom = odom_store.consume_stream(self.connection.odom_stream())
         d_video = video_store.consume_stream(self.connection.video_stream())
 
         self._recording_disposables = CompositeDisposable(d_lidar, d_odom, d_video)
-        self._active_recording_name = recording_name
-        return f"Recording started to data/{recording_name}/ (lidar, odom, video)."
+        self._active_recording_name = safe_name
+        return f"Recording started to data/{safe_name}/ (lidar, odom, video)."
 
     @rpc
     def stop_recording(self) -> str:

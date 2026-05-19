@@ -24,8 +24,8 @@ import tarfile
 from pathlib import Path
 from typing import Any
 
-from dimos.utils.data import get_data_dir
 from dimos.utils.dataset_manifest import MANIFEST_FILENAME
+from dimos.utils.dataset_paths import safe_dataset_dir, validate_dataset_name
 
 _ARCHIVE_CHUNK = 1024 * 1024
 
@@ -39,7 +39,7 @@ def _dimos_version() -> str | None:
 
 def dataset_root_path(dataset_name: str) -> Path:
     """Resolved ``data/<dataset_name>/`` root."""
-    return get_data_dir(dataset_name)
+    return safe_dataset_dir(dataset_name)
 
 
 def build_object_key(
@@ -49,9 +49,10 @@ def build_object_key(
     timestamp: datetime | None = None,
 ) -> str:
     """S3 object key: ``{prefix}{dataset}-{utc}.tar.gz``."""
+    safe_name = validate_dataset_name(dataset_name)
     ts = timestamp or datetime.now(timezone.utc)
     stamp = ts.strftime("%Y%m%dT%H%M%SZ")
-    base = f"{dataset_name}-{stamp}.tar.gz"
+    base = f"{safe_name}-{stamp}.tar.gz"
     p = (key_prefix or "").strip().strip("/")
     return f"{p}/{base}" if p else base
 

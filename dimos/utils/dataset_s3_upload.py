@@ -125,6 +125,9 @@ def run_dataset_pack_and_upload(
         pack_dataset_tar_gz,
         write_upload_sidecar_meta,
     )
+    from dimos.utils.dataset_paths import validate_dataset_name
+
+    safe_dataset_name = validate_dataset_name(dataset_name)
 
     cfg = S3UploadConfig.from_env()
     eff_prefix = (
@@ -142,9 +145,10 @@ def run_dataset_pack_and_upload(
     )
 
     with tempfile.TemporaryDirectory(prefix="dimos-dataset-upload-") as tmp:
-        arc = Path(tmp) / f"{dataset_name}.tar.gz"
-        meta = pack_dataset_tar_gz(dataset_name, arc)
-        object_key = build_object_key(dataset_name, key_prefix=cfg_eff.key_prefix or "")
+        archive_stem = safe_dataset_name.replace("/", "_")
+        arc = Path(tmp) / f"{archive_stem}.tar.gz"
+        meta = pack_dataset_tar_gz(safe_dataset_name, arc)
+        object_key = build_object_key(safe_dataset_name, key_prefix=cfg_eff.key_prefix or "")
         sidecar = write_upload_sidecar_meta(arc, meta)
         meta_key = f"{object_key}.meta.json"
 
