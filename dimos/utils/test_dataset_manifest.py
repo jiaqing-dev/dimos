@@ -15,10 +15,12 @@
 import json
 
 import numpy as np
+import pytest
 
 from dimos.memory.timeseries.legacy import LegacyPickleStore
 from dimos.msgs.sensor_msgs.Image import Image, ImageFormat
 from dimos.utils import dataset_manifest as dm
+from dimos.utils import dataset_paths as dp
 
 
 def test_stream_dir_stats_empty_dir(tmp_path) -> None:
@@ -43,7 +45,11 @@ def test_stream_dir_stats_with_frames(tmp_path) -> None:
 
 
 def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(
+        dp,
+        "get_data_dir",
+        lambda name=None: tmp_path / name if name is not None else tmp_path,
+    )
 
     (tmp_path / "capture" / "lidar").mkdir(parents=True)
     store = LegacyPickleStore(tmp_path / "capture" / "lidar")
@@ -61,3 +67,17 @@ def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
     assert data["streams"]["lidar"]["frames"] == 1
     summary = dm.format_manifest_summary(data)
     assert "lidar" in summary
+
+
+def test_write_go2_manifest_rejects_dataset_path_escape() -> None:
+    for name in ("", "/tmp/capture", "../capture", "nested/../../capture"):
+        with pytest.raises(ValueError):
+            dm.write_go2_manifest(name)
+
+
+def test_dataset_has_pickles_detects_existing_stream_frames(tmp_path) -> None:
+    root = tmp_path / "capture"
+    (root / "lidar").mkdir(parents=True)
+    assert dp.dataset_has_pickles(root, ("lidar", "odom")) is False
+    (root / "lidar" / "000.pickle").write_bytes(b"frame")
+    assert dp.dataset_has_pickles(root, ("lidar", "odom")) is True
