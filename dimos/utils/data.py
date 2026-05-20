@@ -104,11 +104,30 @@ def _get_repo_root() -> Path:
     return repo_dir
 
 
+def _is_relative_to(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+    except ValueError:
+        return False
+    return True
+
+
 @cache
-def get_data_dir(extra_path: str | None = None) -> Path:
-    if extra_path:
-        return _get_repo_root() / "data" / extra_path
-    return _get_repo_root() / "data"
+def get_data_dir(extra_path: str | Path | None = None) -> Path:
+    data_root = _get_repo_root() / "data"
+    if not extra_path:
+        return data_root
+
+    requested_path = Path(extra_path)
+    if requested_path.is_absolute():
+        raise ValueError(f"Data path must be relative to data/: {extra_path!r}")
+
+    resolved_root = data_root.resolve(strict=False)
+    resolved_path = (data_root / requested_path).resolve(strict=False)
+    if not _is_relative_to(resolved_path, resolved_root):
+        raise ValueError(f"Data path escapes data/: {extra_path!r}")
+
+    return resolved_path
 
 
 @cache

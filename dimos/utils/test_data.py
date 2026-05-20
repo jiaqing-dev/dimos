@@ -23,6 +23,20 @@ from dimos.utils import data
 from dimos.utils.data import LfsPath
 
 
+def test_get_data_dir_rejects_paths_outside_data(tmp_path, monkeypatch) -> None:
+    data.get_data_dir.cache_clear()
+    monkeypatch.setattr(data, "_get_repo_root", lambda: tmp_path)
+
+    try:
+        assert data.get_data_dir("capture") == tmp_path / "data" / "capture"
+
+        for bad_path in ("../secret", "nested/../../secret", "/tmp/secret"):
+            with pytest.raises(ValueError, match="data/"):
+                data.get_data_dir(bad_path)
+    finally:
+        data.get_data_dir.cache_clear()
+
+
 @pytest.mark.slow
 def test_pull_file() -> None:
     repo_root = data._get_repo_root()
