@@ -43,7 +43,9 @@ def test_stream_dir_stats_with_frames(tmp_path) -> None:
 
 
 def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(
+        dm, "get_data_dir", lambda name=None: tmp_path / name if name else tmp_path
+    )
 
     (tmp_path / "capture" / "lidar").mkdir(parents=True)
     store = LegacyPickleStore(tmp_path / "capture" / "lidar")
@@ -61,3 +63,13 @@ def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
     assert data["streams"]["lidar"]["frames"] == 1
     summary = dm.format_manifest_summary(data)
     assert "lidar" in summary
+
+
+def test_validate_dataset_name_rejects_unsafe_paths() -> None:
+    bad_names = ["", ".", "..", "../repo", "/etc", "nested/name", "a\\b", " capture"]
+    for name in bad_names:
+        try:
+            dm.validate_dataset_name(name)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted unsafe dataset name: {name!r}")
