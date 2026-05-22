@@ -21,8 +21,10 @@ from unittest.mock import patch
 import pytest
 
 from dimos.utils import dataset_manifest as dm
+from dimos.utils import dataset_paths
 from dimos.utils.dataset_pack import (
     build_object_key,
+    dataset_root_path,
     pack_dataset_tar_gz,
     sha256_file,
     write_upload_sidecar_meta,
@@ -34,6 +36,13 @@ from dimos.utils.dataset_s3_upload import (
 )
 
 
+def _patch_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def fake_get_data_dir(name: str | None = None) -> Path:
+        return tmp_path / name if name else tmp_path
+
+    monkeypatch.setattr(dataset_paths, "get_data_dir", fake_get_data_dir)
+
+
 def test_build_object_key_prefix() -> None:
     from datetime import datetime, timezone
 
@@ -42,8 +51,26 @@ def test_build_object_key_prefix() -> None:
     assert k == "pre/cap-20260508T120000Z.tar.gz"
 
 
+@pytest.mark.parametrize("name", ["", "/tmp/secret", "../secret", "safe/../../secret"])
+def test_dataset_root_path_rejects_unsafe_names(tmp_path, monkeypatch, name: str) -> None:
+    _patch_data_dir(monkeypatch, tmp_path)
+
+    with pytest.raises(ValueError):
+        dataset_root_path(name)
+
+
+def test_dataset_root_path_rejects_symlink_escape(tmp_path, monkeypatch) -> None:
+    _patch_data_dir(monkeypatch, tmp_path)
+    outside = tmp_path.parent / "outside"
+    outside.mkdir()
+    (tmp_path / "link").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="under data"):
+        dataset_root_path("link/capture")
+
+
 def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
 
     root = tmp_path / "ds1"
     (root / "lidar").mkdir(parents=True)
@@ -64,7 +91,7 @@ def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
 
 
 def test_pack_dataset_empty_raises(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
     (tmp_path / "empty").mkdir()
     arc = tmp_path / "x.tar.gz"
     with pytest.raises(ValueError, match="No files"):
@@ -81,7 +108,7 @@ def test_write_upload_sidecar_meta(tmp_path) -> None:
 
 
 def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
     root = tmp_path / "dry_ds"
     (root / "video").mkdir(parents=True)
     (root / "video" / "000.pickle").write_bytes(b"v")
@@ -93,7 +120,7 @@ def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
 
 
 def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    _patch_data_dir(monkeypatch, tmp_path)
     root = tmp_path / "up_ds"
     (root / "odom").mkdir(parents=True)
     (root / "odom" / "000.pickle").write_bytes(b"o")
