@@ -16,9 +16,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -125,7 +125,9 @@ def run_dataset_pack_and_upload(
         pack_dataset_tar_gz,
         write_upload_sidecar_meta,
     )
+    from dimos.utils.dataset_paths import validate_dataset_name
 
+    dataset_name = validate_dataset_name(dataset_name)
     cfg = S3UploadConfig.from_env()
     eff_prefix = (
         key_prefix_cli.strip().strip("/")
