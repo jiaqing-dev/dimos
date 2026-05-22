@@ -13,15 +13,13 @@
 # limitations under the License.
 
 import json
-import os
 from pathlib import Path
 import tarfile
 from unittest.mock import patch
 
 import pytest
 
-from dimos.utils import dataset_manifest as dm
-from dimos.utils import dataset_paths
+from dimos.utils import dataset_manifest as dm, dataset_paths
 from dimos.utils.dataset_pack import (
     build_object_key,
     dataset_root_path,
@@ -30,8 +28,8 @@ from dimos.utils.dataset_pack import (
     write_upload_sidecar_meta,
 )
 from dimos.utils.dataset_s3_upload import (
-    run_dataset_pack_and_upload,
     S3UploadConfig,
+    run_dataset_pack_and_upload,
     upload_file_to_s3,
 )
 

@@ -21,12 +21,13 @@ import hashlib
 import importlib.metadata
 import json
 import tarfile
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dimos.utils.dataset_manifest import MANIFEST_FILENAME
-from dimos.utils.dataset_paths import dataset_root_path as _dataset_root_path
-from dimos.utils.dataset_paths import validate_dataset_name
+from dimos.utils.dataset_paths import dataset_root_path as _dataset_root_path, validate_dataset_name
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _ARCHIVE_CHUNK = 1024 * 1024
 
