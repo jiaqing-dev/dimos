@@ -42,8 +42,13 @@ def test_build_object_key_prefix() -> None:
     assert k == "pre/cap-20260508T120000Z.tar.gz"
 
 
+def test_build_object_key_rejects_path_escape() -> None:
+    with pytest.raises(ValueError, match="relative path under data"):
+        build_object_key("../cap")
+
+
 def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
 
     root = tmp_path / "ds1"
     (root / "lidar").mkdir(parents=True)
@@ -71,6 +76,13 @@ def test_pack_dataset_empty_raises(tmp_path, monkeypatch) -> None:
         pack_dataset_tar_gz("empty", arc)
 
 
+def test_pack_dataset_rejects_path_escape(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    arc = tmp_path / "x.tar.gz"
+    with pytest.raises(ValueError, match="relative path under data"):
+        pack_dataset_tar_gz("../secret", arc)
+
+
 def test_write_upload_sidecar_meta(tmp_path) -> None:
     arc = tmp_path / "a.tar.gz"
     arc.write_bytes(b"x")
@@ -90,6 +102,12 @@ def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
     msg = run_dataset_pack_and_upload("dry_ds", dry_run=True)
     assert "Dry-run:" in msg
     assert "Would upload" in msg
+
+
+def test_run_dataset_pack_and_upload_rejects_path_escape(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    with pytest.raises(ValueError, match="relative path under data"):
+        run_dataset_pack_and_upload("/tmp/secret", dry_run=True)
 
 
 def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
@@ -129,7 +147,10 @@ def test_upload_file_to_s3_mock_client(monkeypatch, tmp_path) -> None:
     f = tmp_path / "blob.bin"
     f.write_bytes(b"data")
 
-    mock_client = object.__new__(object)
+    class MockClient:
+        pass
+
+    mock_client = MockClient()
     called = {}
 
     def upload_file(Filename: str, Bucket: str, Key: str, ExtraArgs: dict | None = None) -> None:

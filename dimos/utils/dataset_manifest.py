@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import importlib.metadata
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from dimos.memory.timeseries.legacy import LegacyPickleStore
@@ -27,6 +27,32 @@ from dimos.utils.data import get_data_dir
 
 MANIFEST_FILENAME = "dataset_manifest.json"
 DEFAULT_GO2_STREAMS = ("lidar", "odom", "video")
+
+
+def validate_dataset_name(dataset_name: str) -> str:
+    """Return a normalized safe dataset name relative to the DimOS data directory."""
+    name = dataset_name.strip()
+    posix_path = PurePosixPath(name)
+    windows_path = PureWindowsPath(name)
+    if (
+        not name
+        or posix_path.is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or "\\" in name
+        or not posix_path.parts
+        or any(part in (".", "..") for part in posix_path.parts)
+    ):
+        raise ValueError(
+            "Dataset name must be a relative path under data/ and must not contain "
+            "absolute paths or '..' components."
+        )
+    return posix_path.as_posix()
+
+
+def dataset_root_path(dataset_name: str) -> Path:
+    """Resolve a validated dataset name under the DimOS data directory."""
+    return get_data_dir(validate_dataset_name(dataset_name))
 
 
 def _dimos_version() -> str | None:
@@ -64,14 +90,15 @@ def build_go2_manifest_payload(
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build manifest dict for a dataset rooted at ``data/<dataset_name>/``."""
-    root = get_data_dir(dataset_name)
+    safe_dataset_name = validate_dataset_name(dataset_name)
+    root = dataset_root_path(safe_dataset_name)
     stream_entries: dict[str, Any] = {}
     for sub in streams:
         stream_entries[sub] = stream_dir_stats(root / sub)
 
     payload: dict[str, Any] = {
         "schema_version": 1,
-        "dataset_name": dataset_name,
+        "dataset_name": safe_dataset_name,
         "root_path": str(root),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "dimos_version": _dimos_version(),
@@ -89,7 +116,7 @@ def write_go2_manifest(
     extra: dict[str, Any] | None = None,
 ) -> Path:
     """Write ``dataset_manifest.json`` under the dataset root."""
-    root = get_data_dir(dataset_name)
+    root = dataset_root_path(dataset_name)
     root.mkdir(parents=True, exist_ok=True)
     payload = build_go2_manifest_payload(dataset_name, streams=streams, extra=extra)
     manifest_path = root / MANIFEST_FILENAME

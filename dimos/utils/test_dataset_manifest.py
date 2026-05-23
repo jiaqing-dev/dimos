@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import dataclass
 import json
 
-import numpy as np
-
 from dimos.memory.timeseries.legacy import LegacyPickleStore
-from dimos.msgs.sensor_msgs.Image import Image, ImageFormat
 from dimos.utils import dataset_manifest as dm
+
+
+@dataclass
+class SampleData:
+    ts: float
 
 
 def test_stream_dir_stats_empty_dir(tmp_path) -> None:
@@ -30,11 +33,7 @@ def test_stream_dir_stats_empty_dir(tmp_path) -> None:
 
 def test_stream_dir_stats_with_frames(tmp_path) -> None:
     store = LegacyPickleStore(tmp_path)
-    img = Image.from_numpy(
-        np.zeros((4, 4, 3), dtype=np.uint8),
-        format=ImageFormat.RGB,
-        frame_id="cam",
-    )
+    img = SampleData(ts=123.0)
     store.save(img)
     stats = dm.stream_dir_stats(tmp_path)
     assert stats["frames"] == 1
@@ -47,11 +46,7 @@ def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
 
     (tmp_path / "capture" / "lidar").mkdir(parents=True)
     store = LegacyPickleStore(tmp_path / "capture" / "lidar")
-    img = Image.from_numpy(
-        np.ones((2, 2, 3), dtype=np.uint8),
-        format=ImageFormat.RGB,
-        frame_id="cam",
-    )
+    img = SampleData(ts=456.0)
     store.save(img)
 
     manifest_path = dm.write_go2_manifest("capture")
@@ -61,3 +56,22 @@ def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
     assert data["streams"]["lidar"]["frames"] == 1
     summary = dm.format_manifest_summary(data)
     assert "lidar" in summary
+
+
+def test_dataset_name_rejects_path_escape() -> None:
+    for name in ("../secret", "capture/../../secret", "/tmp/capture", ".", ""):
+        try:
+            dm.validate_dataset_name(name)
+        except ValueError:
+            continue
+        raise AssertionError(f"expected invalid dataset name: {name!r}")
+
+
+def test_write_go2_manifest_rejects_path_escape(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    try:
+        dm.write_go2_manifest("../secret")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected path traversal dataset name to be rejected")

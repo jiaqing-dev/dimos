@@ -538,23 +538,26 @@ def dataset_info_cmd(
     ),
 ) -> None:
     """Show frame counts and time span for lidar/odom/video streams."""
-    from dimos.utils.data import get_data_dir
     from dimos.utils.dataset_manifest import (
         MANIFEST_FILENAME,
+        dataset_root_path,
         format_manifest_summary,
         read_manifest,
         write_go2_manifest,
     )
 
-    root = get_data_dir(name)
-    manifest_path = root / MANIFEST_FILENAME
-    if refresh or not manifest_path.is_file():
-        write_go2_manifest(name)
     try:
+        root = dataset_root_path(name)
+        manifest_path = root / MANIFEST_FILENAME
+        if refresh or not manifest_path.is_file():
+            write_go2_manifest(name)
         data = read_manifest(manifest_path)
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         typer.echo(f"No dataset at {root} (manifest missing and nothing to scan)", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
     typer.echo(format_manifest_summary(data))
 
 
