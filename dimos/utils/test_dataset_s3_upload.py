@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 
+from dimos.utils import dataset_pack as dp
 from dimos.utils import dataset_manifest as dm
 from dimos.utils.dataset_pack import (
     build_object_key,
@@ -43,7 +44,8 @@ def test_build_object_key_prefix() -> None:
 
 
 def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dp, "get_data_dir", lambda name: tmp_path / name)
 
     root = tmp_path / "ds1"
     (root / "lidar").mkdir(parents=True)
@@ -65,6 +67,7 @@ def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
 
 def test_pack_dataset_empty_raises(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dp, "get_data_dir", lambda name: tmp_path / name)
     (tmp_path / "empty").mkdir()
     arc = tmp_path / "x.tar.gz"
     with pytest.raises(ValueError, match="No files"):
@@ -82,6 +85,7 @@ def test_write_upload_sidecar_meta(tmp_path) -> None:
 
 def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dp, "get_data_dir", lambda name: tmp_path / name)
     root = tmp_path / "dry_ds"
     (root / "video").mkdir(parents=True)
     (root / "video" / "000.pickle").write_bytes(b"v")
@@ -94,6 +98,7 @@ def test_run_dataset_pack_and_upload_dry_run(tmp_path, monkeypatch) -> None:
 
 def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dp, "get_data_dir", lambda name: tmp_path / name)
     root = tmp_path / "up_ds"
     (root / "odom").mkdir(parents=True)
     (root / "odom" / "000.pickle").write_bytes(b"o")
@@ -119,6 +124,20 @@ def test_run_dataset_pack_and_upload_calls_s3(tmp_path, monkeypatch) -> None:
     assert uploads[0][0].suffixes[:2] == [".tar", ".gz"]
     assert uploads[0][1].endswith(".tar.gz")
     assert uploads[1][1].endswith(".tar.gz.meta.json")
+
+
+@pytest.mark.parametrize("dataset_name", ["../capture", "capture/../../etc", "/tmp/capture", "."])
+def test_pack_and_upload_reject_unsafe_dataset_names(dataset_name: str, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(dp, "get_data_dir", lambda name: tmp_path / name)
+
+    with pytest.raises(ValueError, match="Unsafe dataset name|must not be empty"):
+        pack_dataset_tar_gz(dataset_name, tmp_path / "out.tar.gz")
+
+    with pytest.raises(ValueError, match="Unsafe dataset name|must not be empty"):
+        build_object_key(dataset_name)
+
+    with pytest.raises(ValueError, match="Unsafe dataset name|must not be empty"):
+        run_dataset_pack_and_upload(dataset_name, dry_run=True)
 
 
 def test_upload_file_to_s3_mock_client(monkeypatch, tmp_path) -> None:

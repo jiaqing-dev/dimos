@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import importlib.metadata
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from dimos.memory.timeseries.legacy import LegacyPickleStore
@@ -27,6 +27,27 @@ from dimos.utils.data import get_data_dir
 
 MANIFEST_FILENAME = "dataset_manifest.json"
 DEFAULT_GO2_STREAMS = ("lidar", "odom", "video")
+
+
+def validate_dataset_name(dataset_name: str) -> str:
+    """Return a normalized dataset path that cannot escape ``data/``."""
+    name = dataset_name.strip()
+    if not name:
+        raise ValueError("Dataset name must not be empty")
+    if "\\" in name:
+        raise ValueError("Dataset name must use forward-slash relative paths")
+
+    path = PurePosixPath(name)
+    normalized = path.as_posix()
+    if (
+        normalized == "."
+        or path.is_absolute()
+        or any(part in ("", ".", "..") for part in path.parts)
+    ):
+        raise ValueError(
+            f"Unsafe dataset name {dataset_name!r}: use a relative path under data/ without '..'"
+        )
+    return normalized
 
 
 def _dimos_version() -> str | None:
@@ -64,6 +85,7 @@ def build_go2_manifest_payload(
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build manifest dict for a dataset rooted at ``data/<dataset_name>/``."""
+    dataset_name = validate_dataset_name(dataset_name)
     root = get_data_dir(dataset_name)
     stream_entries: dict[str, Any] = {}
     for sub in streams:
@@ -89,6 +111,7 @@ def write_go2_manifest(
     extra: dict[str, Any] | None = None,
 ) -> Path:
     """Write ``dataset_manifest.json`` under the dataset root."""
+    dataset_name = validate_dataset_name(dataset_name)
     root = get_data_dir(dataset_name)
     root.mkdir(parents=True, exist_ok=True)
     payload = build_go2_manifest_payload(dataset_name, streams=streams, extra=extra)
