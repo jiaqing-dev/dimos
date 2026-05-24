@@ -12,14 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import dataclass
 import json
 
-import numpy as np
 import pytest
 
 from dimos.memory.timeseries.legacy import LegacyPickleStore
-from dimos.msgs.sensor_msgs.Image import Image, ImageFormat
 from dimos.utils import dataset_manifest as dm
+
+
+@dataclass
+class SampleFrame:
+    ts: float
 
 
 def test_stream_dir_stats_empty_dir(tmp_path) -> None:
@@ -31,16 +35,12 @@ def test_stream_dir_stats_empty_dir(tmp_path) -> None:
 
 def test_stream_dir_stats_with_frames(tmp_path) -> None:
     store = LegacyPickleStore(tmp_path)
-    img = Image.from_numpy(
-        np.zeros((4, 4, 3), dtype=np.uint8),
-        format=ImageFormat.RGB,
-        frame_id="cam",
-    )
-    store.save(img)
+    frame = SampleFrame(ts=123.0)
+    store.save(frame)
     stats = dm.stream_dir_stats(tmp_path)
     assert stats["frames"] == 1
-    assert stats["first_timestamp"] == img.ts
-    assert stats["last_timestamp"] == img.ts
+    assert stats["first_timestamp"] == frame.ts
+    assert stats["last_timestamp"] == frame.ts
 
 
 def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
@@ -48,12 +48,7 @@ def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
 
     (tmp_path / "capture" / "lidar").mkdir(parents=True)
     store = LegacyPickleStore(tmp_path / "capture" / "lidar")
-    img = Image.from_numpy(
-        np.ones((2, 2, 3), dtype=np.uint8),
-        format=ImageFormat.RGB,
-        frame_id="cam",
-    )
-    store.save(img)
+    store.save(SampleFrame(ts=456.0))
 
     manifest_path = dm.write_go2_manifest("capture")
     assert manifest_path.is_file()
