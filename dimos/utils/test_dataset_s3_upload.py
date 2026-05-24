@@ -148,15 +148,17 @@ def test_upload_file_to_s3_mock_client(monkeypatch, tmp_path) -> None:
     f = tmp_path / "blob.bin"
     f.write_bytes(b"data")
 
-    mock_client = object.__new__(object)
     called = {}
 
-    def upload_file(Filename: str, Bucket: str, Key: str, ExtraArgs: dict | None = None) -> None:
-        called["fn"] = Filename
-        called["bucket"] = Bucket
-        called["key"] = Key
+    class MockClient:
+        def upload_file(
+            self, Filename: str, Bucket: str, Key: str, ExtraArgs: dict | None = None
+        ) -> None:
+            called["fn"] = Filename
+            called["bucket"] = Bucket
+            called["key"] = Key
 
-    mock_client.upload_file = upload_file
+    mock_client = MockClient()
 
     with patch("dimos.utils.dataset_s3_upload.s3_client_from_config", return_value=mock_client):
         uri = upload_file_to_s3(f, "prefix/k.tar.gz")
