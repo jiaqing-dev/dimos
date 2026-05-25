@@ -15,6 +15,7 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import tarfile
 from unittest.mock import patch
 
@@ -134,7 +135,7 @@ def test_upload_file_to_s3_mock_client(monkeypatch, tmp_path) -> None:
     f = tmp_path / "blob.bin"
     f.write_bytes(b"data")
 
-    mock_client = object.__new__(object)
+    mock_client = SimpleNamespace()
     called = {}
 
     def upload_file(Filename: str, Bucket: str, Key: str, ExtraArgs: dict | None = None) -> None:
