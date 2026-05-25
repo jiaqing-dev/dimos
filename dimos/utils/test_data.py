@@ -23,6 +23,45 @@ from dimos.utils import data
 from dimos.utils.data import LfsPath
 
 
+@pytest.fixture
+def isolated_data_root(tmp_path, monkeypatch):
+    data.get_data_dir.cache_clear()
+    monkeypatch.setattr(data, "_get_repo_root", lambda: tmp_path)
+    yield tmp_path
+    data.get_data_dir.cache_clear()
+
+
+def test_get_data_dir_allows_safe_relative_subpaths(isolated_data_root) -> None:
+    assert (
+        data.get_data_dir("capture/lidar")
+        == isolated_data_root / "data" / "capture" / "lidar"
+    )
+    assert (
+        data.get_data_dir(Path("capture") / "odom")
+        == isolated_data_root / "data" / "capture" / "odom"
+    )
+
+
+@pytest.mark.parametrize(
+    "extra_path",
+    [
+        "../outside",
+        "capture/../../outside",
+        "/tmp/outside",
+        r"..\outside",
+        r"C:\tmp\outside",
+    ],
+)
+def test_get_data_dir_rejects_escape_paths(isolated_data_root, extra_path) -> None:
+    with pytest.raises(ValueError, match="Data path"):
+        data.get_data_dir(extra_path)
+
+
+def test_get_data_rejects_escape_paths(isolated_data_root) -> None:
+    with pytest.raises(ValueError, match="Data path"):
+        data.get_data("../outside")
+
+
 @pytest.mark.slow
 def test_pull_file() -> None:
     repo_root = data._get_repo_root()
