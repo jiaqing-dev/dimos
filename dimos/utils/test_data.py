@@ -23,6 +23,26 @@ from dimos.utils import data
 from dimos.utils.data import LfsPath
 
 
+def test_get_data_dir_rejects_parent_traversal() -> None:
+    with pytest.raises(ValueError, match="must not contain"):
+        data.get_data_dir("../outside")
+
+
+def test_get_data_dir_rejects_absolute_path() -> None:
+    with pytest.raises(ValueError, match="must be relative"):
+        data.get_data_dir("/tmp/outside")
+
+
+def test_get_data_rejects_parent_traversal() -> None:
+    with pytest.raises(ValueError, match="must not contain"):
+        data.get_data("../outside")
+
+
+def test_get_data_rejects_current_directory() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        data.get_data(".")
+
+
 @pytest.mark.slow
 def test_pull_file() -> None:
     repo_root = data._get_repo_root()

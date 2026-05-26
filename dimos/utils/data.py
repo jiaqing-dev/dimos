@@ -14,7 +14,7 @@
 
 from functools import cache
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import platform
 import subprocess
 import sys
@@ -104,11 +104,47 @@ def _get_repo_root() -> Path:
     return repo_dir
 
 
+def _validate_data_relative_path(
+    extra_path: str | Path,
+    *,
+    allow_current: bool,
+) -> Path:
+    raw_path = os.fspath(extra_path)
+    if raw_path in ("", "."):
+        if allow_current:
+            return Path()
+        raise ValueError("Data path must not be empty")
+
+    path = Path(raw_path)
+    windows_path = PureWindowsPath(raw_path)
+    if path.is_absolute() or windows_path.is_absolute() or windows_path.drive:
+        raise ValueError(f"Data path must be relative: {raw_path!r}")
+
+    if ".." in path.parts or ".." in windows_path.parts:
+        raise ValueError(f"Data path must not contain '..': {raw_path!r}")
+
+    return path
+
+
+def _assert_under_data_dir(path: Path, data_dir: Path) -> None:
+    resolved_data_dir = data_dir.resolve(strict=False)
+    resolved_path = path.resolve(strict=False)
+    if resolved_path == resolved_data_dir:
+        return
+    if not resolved_path.is_relative_to(resolved_data_dir):
+        raise ValueError(f"Data path must stay under {resolved_data_dir}: {path}")
+
+
 @cache
-def get_data_dir(extra_path: str | None = None) -> Path:
-    if extra_path:
-        return _get_repo_root() / "data" / extra_path
-    return _get_repo_root() / "data"
+def get_data_dir(extra_path: str | Path | None = None) -> Path:
+    data_dir = _get_repo_root() / "data"
+    if extra_path is None or os.fspath(extra_path) == "":
+        return data_dir
+
+    relative_path = _validate_data_relative_path(extra_path, allow_current=True)
+    path = data_dir / relative_path
+    _assert_under_data_dir(path, data_dir)
+    return path
 
 
 @cache
@@ -243,15 +279,17 @@ def get_data(name: str | Path) -> Path:
         # Nested path - downloads "dataset" archive, returns path to nested file
         frame = get_data("dataset/frames/001.png")
     """
+    relative_name = _validate_data_relative_path(name, allow_current=False)
     data_dir = get_data_dir()
-    file_path = data_dir / name
+    file_path = data_dir / relative_name
+    _assert_under_data_dir(file_path, data_dir)
 
     # already pulled and decompressed, return it directly
     if file_path.exists():
         return file_path
 
     # extract archive root (first path component) and nested path
-    path_parts = Path(name).parts
+    path_parts = relative_name.parts
     archive_name = path_parts[0]
     nested_path = Path(*path_parts[1:]) if len(path_parts) > 1 else None
 
