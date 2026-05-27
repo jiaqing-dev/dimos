@@ -43,7 +43,7 @@ def test_build_object_key_prefix() -> None:
 
 
 def test_pack_dataset_tar_gz_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
 
     root = tmp_path / "ds1"
     (root / "lidar").mkdir(parents=True)
@@ -69,6 +69,17 @@ def test_pack_dataset_empty_raises(tmp_path, monkeypatch) -> None:
     arc = tmp_path / "x.tar.gz"
     with pytest.raises(ValueError, match="No files"):
         pack_dataset_tar_gz("empty", arc)
+
+
+def test_pack_dataset_rejects_path_traversal(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    arc = tmp_path / "x.tar.gz"
+
+    with pytest.raises(ValueError, match="relative path"):
+        pack_dataset_tar_gz("../secret", arc)
+
+    with pytest.raises(ValueError, match="relative path"):
+        pack_dataset_tar_gz(str(tmp_path), arc)
 
 
 def test_write_upload_sidecar_meta(tmp_path) -> None:
@@ -129,7 +140,10 @@ def test_upload_file_to_s3_mock_client(monkeypatch, tmp_path) -> None:
     f = tmp_path / "blob.bin"
     f.write_bytes(b"data")
 
-    mock_client = object.__new__(object)
+    class MockClient:
+        pass
+
+    mock_client = MockClient()
     called = {}
 
     def upload_file(Filename: str, Bucket: str, Key: str, ExtraArgs: dict | None = None) -> None:

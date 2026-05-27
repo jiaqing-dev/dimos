@@ -24,8 +24,7 @@ import tarfile
 from pathlib import Path
 from typing import Any
 
-from dimos.utils.data import get_data_dir
-from dimos.utils.dataset_manifest import MANIFEST_FILENAME
+from dimos.utils.dataset_manifest import MANIFEST_FILENAME, dataset_root_path as _dataset_root_path
 
 _ARCHIVE_CHUNK = 1024 * 1024
 
@@ -39,7 +38,7 @@ def _dimos_version() -> str | None:
 
 def dataset_root_path(dataset_name: str) -> Path:
     """Resolved ``data/<dataset_name>/`` root."""
-    return get_data_dir(dataset_name)
+    return _dataset_root_path(dataset_name)
 
 
 def build_object_key(
