@@ -142,7 +142,7 @@ def run_dataset_pack_and_upload(
     )
 
     with tempfile.TemporaryDirectory(prefix="dimos-dataset-upload-") as tmp:
-        arc = Path(tmp) / f"{dataset_name}.tar.gz"
+        arc = Path(tmp) / "dataset.tar.gz"
         meta = pack_dataset_tar_gz(dataset_name, arc)
         object_key = build_object_key(dataset_name, key_prefix=cfg_eff.key_prefix or "")
         sidecar = write_upload_sidecar_meta(arc, meta)

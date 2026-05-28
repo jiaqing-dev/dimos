@@ -104,11 +104,29 @@ def _get_repo_root() -> Path:
     return repo_dir
 
 
-@cache
-def get_data_dir(extra_path: str | None = None) -> Path:
-    if extra_path:
-        return _get_repo_root() / "data" / extra_path
-    return _get_repo_root() / "data"
+def validate_data_subpath(extra_path: str | Path) -> Path:
+    """Return a safe path under ``data/`` for a user-provided relative subpath."""
+    data_root = _get_repo_root() / "data"
+    subpath = Path(extra_path)
+    if subpath.is_absolute():
+        raise ValueError(f"Data path must be relative to {data_root}: {extra_path}")
+    if not subpath.parts:
+        raise ValueError("Data path must not be empty")
+    if any(part == ".." for part in subpath.parts):
+        raise ValueError(f"Data path must not contain '..': {extra_path}")
+
+    target = data_root / subpath
+    data_root_resolved = data_root.resolve(strict=False)
+    target_resolved = target.resolve(strict=False)
+    if not target_resolved.is_relative_to(data_root_resolved):
+        raise ValueError(f"Data path escapes data directory: {extra_path}")
+    return target
+
+
+def get_data_dir(extra_path: str | Path | None = None) -> Path:
+    if extra_path is None:
+        return _get_repo_root() / "data"
+    return validate_data_subpath(extra_path)
 
 
 @cache
@@ -243,8 +261,7 @@ def get_data(name: str | Path) -> Path:
         # Nested path - downloads "dataset" archive, returns path to nested file
         frame = get_data("dataset/frames/001.png")
     """
-    data_dir = get_data_dir()
-    file_path = data_dir / name
+    file_path = get_data_dir(name)
 
     # already pulled and decompressed, return it directly
     if file_path.exists():

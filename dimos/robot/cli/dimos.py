@@ -546,15 +546,18 @@ def dataset_info_cmd(
         write_go2_manifest,
     )
 
-    root = get_data_dir(name)
-    manifest_path = root / MANIFEST_FILENAME
-    if refresh or not manifest_path.is_file():
-        write_go2_manifest(name)
     try:
+        root = get_data_dir(name)
+        manifest_path = root / MANIFEST_FILENAME
+        if refresh or not manifest_path.is_file():
+            write_go2_manifest(name)
         data = read_manifest(manifest_path)
     except FileNotFoundError:
         typer.echo(f"No dataset at {root} (manifest missing and nothing to scan)", err=True)
         raise typer.Exit(1)
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
     typer.echo(format_manifest_summary(data))
 
 

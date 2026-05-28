@@ -14,10 +14,9 @@
 
 import json
 
-import numpy as np
-
 from dimos.memory.timeseries.legacy import LegacyPickleStore
-from dimos.msgs.sensor_msgs.Image import Image, ImageFormat
+from dimos.types.timestamped import Timestamped
+from dimos.utils import data as data_utils
 from dimos.utils import dataset_manifest as dm
 
 
@@ -30,29 +29,20 @@ def test_stream_dir_stats_empty_dir(tmp_path) -> None:
 
 def test_stream_dir_stats_with_frames(tmp_path) -> None:
     store = LegacyPickleStore(tmp_path)
-    img = Image.from_numpy(
-        np.zeros((4, 4, 3), dtype=np.uint8),
-        format=ImageFormat.RGB,
-        frame_id="cam",
-    )
-    store.save(img)
+    msg = Timestamped(123.0)
+    store.save(msg)
     stats = dm.stream_dir_stats(tmp_path)
     assert stats["frames"] == 1
-    assert stats["first_timestamp"] == img.ts
-    assert stats["last_timestamp"] == img.ts
+    assert stats["first_timestamp"] == msg.ts
+    assert stats["last_timestamp"] == msg.ts
 
 
 def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(data_utils, "_get_repo_root", lambda: tmp_path)
 
-    (tmp_path / "capture" / "lidar").mkdir(parents=True)
-    store = LegacyPickleStore(tmp_path / "capture" / "lidar")
-    img = Image.from_numpy(
-        np.ones((2, 2, 3), dtype=np.uint8),
-        format=ImageFormat.RGB,
-        frame_id="cam",
-    )
-    store.save(img)
+    (tmp_path / "data" / "capture" / "lidar").mkdir(parents=True)
+    store = LegacyPickleStore(tmp_path / "data" / "capture" / "lidar")
+    store.save(Timestamped(456.0))
 
     manifest_path = dm.write_go2_manifest("capture")
     assert manifest_path.is_file()

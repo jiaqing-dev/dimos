@@ -75,7 +75,7 @@ def pack_dataset_tar_gz(
 
     with tarfile.open(dest_path, "w:gz", compresslevel=6) as tf:
         for path in sorted(root.rglob("*")):
-            if not path.is_file():
+            if path.is_symlink() or not path.is_file():
                 continue
             try:
                 rel = path.relative_to(root)
