@@ -18,6 +18,7 @@ import numpy as np
 
 from dimos.memory.timeseries.legacy import LegacyPickleStore
 from dimos.msgs.sensor_msgs.Image import Image, ImageFormat
+from dimos.utils import data as data_utils
 from dimos.utils import dataset_manifest as dm
 
 
@@ -43,10 +44,10 @@ def test_stream_dir_stats_with_frames(tmp_path) -> None:
 
 
 def test_write_go2_manifest_roundtrip(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(dm, "get_data_dir", lambda name: tmp_path / name)
+    monkeypatch.setattr(data_utils, "_get_repo_root", lambda: tmp_path)
 
-    (tmp_path / "capture" / "lidar").mkdir(parents=True)
-    store = LegacyPickleStore(tmp_path / "capture" / "lidar")
+    (tmp_path / "data" / "capture" / "lidar").mkdir(parents=True)
+    store = LegacyPickleStore(tmp_path / "data" / "capture" / "lidar")
     img = Image.from_numpy(
         np.ones((2, 2, 3), dtype=np.uint8),
         format=ImageFormat.RGB,
